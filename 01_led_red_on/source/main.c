@@ -29,6 +29,14 @@ int main(void)
         //따라서 아래처럼 사용해도 된다.
         //1000000: 약 1초이다.
         //
-        for (int i = 0; i < 1000000; i++) ;
+        for (volatile int i = 0; i < 500000; i++) ;
     }
 }
+
+// arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -c main.c -o main.o
+// arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -c startup.c -o startup.o
+// arm-none-eabi-ld -T tm4c123.ld startup.o main.o -o final.elf
+// arm-none-eabi-objcopy -O binary final.elf final.bin
+// sudo lm4flash final.bin
+
+
