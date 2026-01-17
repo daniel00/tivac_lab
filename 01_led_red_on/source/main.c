@@ -29,7 +29,7 @@ int main(void)
         //따라서 아래처럼 사용해도 된다.
         //1000000: 약 1초이다.
         //
-        for (volatile int i = 0; i < 500000; i++) ;
+        for (volatile int i = 0; i < 200000; i++) ;
     }
 }
 

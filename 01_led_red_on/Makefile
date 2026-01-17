@@ -42,22 +42,62 @@ LDFLAGS = -T $(LDSCRIPT)
 OCFLAGS = -O binary
 
 
+#빌드 정보를 출력
+BUILD_TIME  := $(shell date "+%Y-%m-%d %H:%M:%S")
+GCC_VERSION := $(shell $(CC) -dumpversion)
+SRC_COUNT   := $(words $(SRCS))
+
+#Git 정보 추출 (주요 변경점 요약)
+# - 변경된 파일 개수와 간략한 목록을 가져옵니다.
+GIT_BRANCH  := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "Not a Git Repo")
+GIT_CHANGES := $(shell git diff --shortstat 2>/dev/null || echo "No changes")
+# 수정된 파일 이름들 중 상위 3개만 추출 (너무 많아지는 것 방지)
+
+GIT_FILES   := $(shell git diff --name-only 2>/dev/null | head -n 3 | tr '\n' ' ')
+
+
+
+
+
+
+
 #그냥 make만 치면 down 타겟으로 진행된다.
-down: printinfo $(BIN)
+down: printinfo $(BIN) check_size
 	@echo ""
 	@echo "Downloading ... : $(BIN)"
 	sudo lm4flash $(BIN)
 
 #make all을 치면 bin까지만 만들고 다운로드는 하지 않는다.
 #최종적으로 bin파일을 만들거다
-all: printinfo $(BIN)
+all: printinfo $(BIN) check_size
 
-#빌드 정보를 출력
-printinfo: 
-	@echo "==============================================="
-	@echo "Building Target: $(BIN)"
-	@echo "Build Mode     : $(MODE_MSG)"
-	@echo "==============================================="
+
+# [정보 출력] 다니엘님의 스타일 + Git 정보 추가
+printinfo:
+	@echo ""
+	@echo "==============================================================================="
+	@echo " [$(MODE)] PROCESS STARTED"
+	@echo "==============================================================================="
+	@echo "  Target Name  : $(TARGET).bin"
+	@echo "  Build Mode   : $(MODE)"
+	@echo "  GCC Version  : $(GCC_VERSION)"
+	@echo "  Source Files : $(SRC_COUNT) files"
+	@echo "  Linker Script: $(LDSCRIPT)"
+	@echo "  Build Time   : $(BUILD_TIME)"
+	@echo "  Output Path  : $(BUILDDIR)"
+	@echo "  Git Changes  : $(GIT_CHANGES)"
+	@echo "  Modified     : $(GIT_FILES)..."
+	@echo "==============================================================================="
+
+# # [SIZE] 메모리 점유율 확인 (임베디드 필수)
+SIZE = arm-none-eabi-size
+check_size: $(ELF)
+	@echo ""
+	@echo ">> Memory Usage Summary:"
+	@$(SIZE) $<
+	@echo "==============================================================================="
+
+
 
 #위 bin을 만들려면 , elf가 필요하다 == objcopy
 $(BIN): $(ELF)
