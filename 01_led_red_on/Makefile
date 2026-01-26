@@ -1,8 +1,14 @@
-
-
 #make TARGET=myapp 등으로 이름을 지정하지 않으면 기본값 main 적용
 TARGET ?= main
 MODE ?= debug
+
+# ANSI Escape Code를 사용합니다.
+GREEN  = \033[0;32m
+CYAN   = \033[0;36m
+YELLOW = \033[0;33m
+RED    = \033[0;31m
+RESET  = \033[0m
+
 
 SRCDIR = source
 BUILDDIR = build
@@ -64,8 +70,10 @@ GIT_FILES   := $(shell git diff --name-only 2>/dev/null | head -n 3 | tr '\n' ' 
 #그냥 make만 치면 down 타겟으로 진행된다.
 down: printinfo $(BIN) check_size
 	@echo ""
-	@echo "Downloading ... : $(BIN)"
+	@echo "$(YELLOW)Downloading ... : $(BIN) $(RESET)"
 	sudo lm4flash $(BIN)
+	@echo "$(CYAN)OK$(RESET)"
+	@echo ""
 
 #make all을 치면 bin까지만 만들고 다운로드는 하지 않는다.
 #최종적으로 bin파일을 만들거다
@@ -89,49 +97,101 @@ printinfo:
 	@echo "  Modified     : $(GIT_FILES)..."
 	@echo "==============================================================================="
 
-# # [SIZE] 메모리 점유율 확인 (임베디드 필수)
+
+# 1. 칩 사양 설정 (TM4C123GH6PM 기준)
 SIZE = arm-none-eabi-size
+FLASH_SIZE = 262144  # 256 KB
+RAM_SIZE   = 32768   # 32 KB
+
+# ... 기존 설정들 ...
+
+# [SIZE] 메모리 사용량 상세 분석
 check_size: $(ELF)
 	@echo ""
-	@echo ">> Memory Usage Summary:"
+	@echo "$(YELLOW)>> Memory Usage Analysis: $(RESET)"
 	@$(SIZE) $<
 	@echo "==============================================================================="
+	@$(eval TEXT := $(shell $(SIZE) $< | awk 'NR==2 {print $$1}'))
+	@$(eval DATA := $(shell $(SIZE) $< | awk 'NR==2 {print $$2}'))
+	@$(eval BSS  := $(shell $(SIZE) $< | awk 'NR==2 {print $$3}'))
+	@$(eval FLASH_USED := $(shell echo $$(($(TEXT) + $(DATA)))))
+	@$(eval RAM_USED   := $(shell echo $$(($(DATA) + $(BSS)))))
+	@$(eval FLASH_FREE := $(shell echo $$(($(FLASH_SIZE) - $(FLASH_USED)))))
+	@$(eval RAM_FREE   := $(shell echo $$(($(RAM_SIZE) - $(RAM_USED)))))
+	@$(eval FLASH_PCT  := $(shell echo $$(($(FLASH_USED) * 100 / $(FLASH_SIZE)))))
+	@$(eval RAM_PCT    := $(shell echo $$(($(RAM_USED) * 100 / $(RAM_SIZE)))))
+	@echo "  Flash: $(FLASH_USED) / $(FLASH_SIZE) bytes ($(FLASH_PCT)%)"
+	@echo "         Remaining: $(FLASH_FREE) bytes"
+	@echo "  RAM:   $(RAM_USED) / $(RAM_SIZE) bytes ($(RAM_PCT)%)"
+	@echo "         Remaining: $(RAM_FREE) bytes"
+	@echo "==============================================================================="
+
+
+# # # [SIZE] 메모리 점유율 확인 (임베디드 필수)
+# SIZE = arm-none-eabi-size
+# check_size: $(ELF)
+# 	@echo ""
+# 	@echo ">> Memory Usage Summary:"
+# 	@$(SIZE) $<
+# 	@echo "==============================================================================="
 
 
 
 #위 bin을 만들려면 , elf가 필요하다 == objcopy
 $(BIN): $(ELF)
 	@echo ""
-	@echo "Creating Binary...: $@"
+	@echo "$(YELLOW)Creating Binary...: $@ $(RESET)"
 	$(OC) $(OCFLAGS) $< $@
+	@echo "$(CYAN)OK$(RESET)"
 
 #위 elf를 만들려면 objs 파일들이 필요하다 == Linking
 $(ELF): $(OBJS)
 	@echo ""
-	@echo "Linking...: $@"
+	@echo "$(YELLOW)Linking...: $@$(RESET)"
 	$(LD) $(LDFLAGS) $^ -o $@ 
+	@echo "$(CYAN)OK$(RESET)"
 
 #위 objs 파일을 만드는 방법이다 == compile 
 #objs안에 들어있는 파일만 만든다. #즉 위에서 제외처리(filtered-out) 한 파일은 자동으로 포함되지 않는다
 $(BUILDDIR)/%.o: $(SRCDIR)/%.c
 	@echo ""
-	@echo "Compile...: $< to $@"
+	@echo "$(YELLOW)Compile...: $< to $@ $(RESET)"
+	@echo "$(CYAN)🔍 Changes in $<:$(RESET)"
+	@# --word-diff-regex를 써서 변경된 부분만 강조하고, 불필요한 헤더는 tail로 날립니다.
+	@git diff --color=always -U0 $< | tail -n +5 | head -n 5 || true
+	@echo "$(CYAN)----------------------$(RESET)"
 	@mkdir -p $(BUILDDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
+	@echo "$(CYAN)OK$(RESET)"
 
+# $(BUILDDIR)/%.o: $(SRCDIR)/%.c
+# 	@echo ""
+# 	@echo "$(YELLOW)Compile...: $< to $@ $(RESET)"
+# 	@echo "$(CYAN)🔍 Most Recent Changes in $< (by Time):$(RESET)"
+# 	@# 1. git blame으로 각 줄의 수정시간을 가져옴
+# 	@# 2. 시간 순서로 역순 정렬(sort -r)
+# 	@# 3. 그 중 상위 5줄만 선택(head -n 5)
+# 	@git blame --incremental $< | grep -E "^author-time " | cut -d' ' -f2 > .tmp_times || true
+# 	@git blame $< | sort -k3,3r | head -n 5 | sed 's/^/  [RECENT] /' || true
+# 	@echo "$(CYAN)----------------------$(RESET)"
+# 	@mkdir -p $(BUILDDIR)
+# 	$(CC) $(CFLAGS) -c $< -o $@
+# 	@echo "$(CYAN)OK$(RESET)"
 
 #중간에 생성된 *.o *.bin *.elf 등을 삭제한다.
 clean: 
 	@echo ""
-	@echo "Clean build files..."
+	@echo "$(YELLOW)Clean build files... $(RESET)"
 	@rm -rf $(BUILDDIR)
+	@echo "$(CYAN)OK$(RESET)"
+	@echo ""
 
 
 debug:
 	@echo ""
 	@echo "$(SRCS)"
 	@echo "$(OBJS)"
-
+	@echo ""
 
 
 # 아래는 그냥 매우 간단한 버전의 Makefile
@@ -154,3 +214,4 @@ debug:
 # down/%:
 # 	@echo "\ndownloading binary ......"
 # 	sudo lm4flash $*
+
