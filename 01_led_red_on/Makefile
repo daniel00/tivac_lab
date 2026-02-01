@@ -62,22 +62,30 @@ GIT_CHANGES := $(shell git diff --shortstat 2>/dev/null || echo "No changes")
 GIT_FILES   := $(shell git diff --name-only 2>/dev/null | head -n 3 | tr '\n' ' ')
 
 
-
-
-
+#최종적으로 bin파일을 만들거다
+# 아래처럼 하면 printinfo->BIN만들고->check_size->down_ti 를 순서대로 진행한다.
+all: printinfo $(BIN) check_size down_ti
 
 
 #그냥 make만 치면 down 타겟으로 진행된다.
-down: printinfo $(BIN) check_size
+down_ti: printinfo $(BIN) check_size
 	@echo ""
 	@echo "$(YELLOW)Downloading ... : $(BIN) $(RESET)"
 	sudo lm4flash $(BIN)
 	@echo "$(CYAN)OK$(RESET)"
 	@echo ""
 
-#make all을 치면 bin까지만 만들고 다운로드는 하지 않는다.
-#최종적으로 bin파일을 만들거다
-all: printinfo $(BIN) check_size
+
+down_st: printinfo $(BIN) check_size
+	@echo ""
+	@echo "$(YELLOW)Downloading ... : $(BIN) $(RESET)"
+	sudo st-flash write $(BUILDDIR)/main.bin 0x8000000
+	@echo "$(CYAN)OK$(RESET)"
+	@echo ""
+
+
+
+
 
 
 # [정보 출력] 다니엘님의 스타일 + Git 정보 추가

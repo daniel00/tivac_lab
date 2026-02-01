@@ -1,0 +1,32 @@
+// STM32F407 Register Addresses
+// 1. RCC (Reset and Clock Control) - GPIO Port D 클록 활성화
+#define RCC_AHB1ENR       (*((volatile unsigned long *)0x40023830))
+
+// 2. GPIOD Registers (Discovery 보드 LED는 Port D에 연결됨)
+#define GPIOD_MODER       (*((volatile unsigned long *)0x40020C00))
+#define GPIOD_ODR         (*((volatile unsigned long *)0x40020C14))
+
+int main(void)
+{
+    // [Step 1] GPIOD Peripheral Clock Enable (Bit 3)
+    RCC_AHB1ENR |= (1 << 3);
+
+    // [Step 2] GPIO Mode Register 설정
+    // PD12를 Output 모드로 설정 (MODER12의 비트를 01로 설정)
+    // 0x01 << (12 * 2) = 24번째 비트부터 01 대입
+    // GPIOD_MODER &= ~(3UL << 24); // 기존 비트 클리어
+    // GPIOD_MODER |=  (1UL << 24); // Output 설정
+    GPIOD_MODER &= ~(3 << 24); // 기존 비트 클리어
+    GPIOD_MODER |=  (1 << 24); // Output 설정
+
+    while (1)
+    {
+        // [Step 3] Toggle PD12 (Green LED)
+        GPIOD_ODR ^= (1 << 12);
+
+        // [Step 4] Delay loop
+        // 최적화 옵션 -O0 기준, STM32F407(168MHz)에서 1,000,000은 대략 0.1~0.2초 내외입니다.
+        for (volatile int i = 0; i < 100000; i++);
+    }
+}
+
