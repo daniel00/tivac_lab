@@ -1,6 +1,8 @@
 #make TARGET=myapp 등으로 이름을 지정하지 않으면 기본값 main 적용
 TARGET ?= main
 MODE ?= debug
+CHIP ?= ti
+APP ?= 01_led_test
 
 # ANSI Escape Code를 사용합니다.
 GREEN  = \033[0;32m
@@ -10,8 +12,8 @@ RED    = \033[0;31m
 RESET  = \033[0m
 
 
-SRCDIR = source
-BUILDDIR = build
+SRCDIR = $(APP)/source
+BUILDDIR = $(APP)/build
 
 #최종 출력 파일 bin, elf
 BIN = $(BUILDDIR)/$(TARGET).bin
@@ -32,6 +34,25 @@ OC = arm-none-eabi-objcopy
 #공통
 CFLAGS = -mcpu=cortex-m4 -mthumb -Wall
 
+# CHIP 선택에 따라 다르게
+ifeq ($(CHIP), ti)
+	CFLAGS += -DTM4C123
+	CHIP_MSG = "TM4C123"
+	LDSCRIPT = $(SRCDIR)/tm4c123.ld
+	FLASH_TOOL = ti
+	FLASH_SIZE = 262144  # 256 KB (TM4C123)
+	RAM_SIZE   = 32768   # 32 KB (TM4C123)
+else ifeq ($(CHIP), st)
+	CFLAGS += -DSTM32F4
+	CHIP_MSG = "STM32F4"
+	LDSCRIPT = $(SRCDIR)/stm32f4.ld
+	FLASH_TOOL = st
+	FLASH_SIZE = 1048576 # 1 MB (STM32F407)
+	RAM_SIZE   = 192000  # 192 KB (STM32F407)
+else
+	$(error Please specify CHIP=ti or CHIP=st)
+endif
+
 #debug, releash에 따라 다르게
 ifeq ($(MODE), debug)
 	CFLAGS += -g -O0 -DDEBUG
@@ -43,7 +64,6 @@ endif
 
 
 #링커 옵션
-LDSCRIPT = $(SRCDIR)/tm4c123.ld
 LDFLAGS = -T $(LDSCRIPT)
 OCFLAGS = -O binary
 
@@ -62,40 +82,44 @@ GIT_CHANGES := $(shell git diff --shortstat 2>/dev/null || echo "No changes")
 GIT_FILES   := $(shell git diff --name-only 2>/dev/null | head -n 3 | tr '\n' ' ')
 
 
+# ============ 메인 타겟 ============
+ti:
+	$(MAKE) CHIP=ti printinfo $(BIN) check_size down_ti
+
+st:
+	$(MAKE) CHIP=st printinfo $(BIN) check_size down_st
+
 #최종적으로 bin파일을 만들거다
 # 아래처럼 하면 printinfo->BIN만들고->check_size->down_ti 를 순서대로 진행한다.
-all: printinfo $(BIN) check_size down_ti
+all: ti
 
 
 #그냥 make만 치면 down 타겟으로 진행된다.
-down_ti: printinfo $(BIN) check_size
+down_ti: 
 	@echo ""
-	@echo "$(YELLOW)Downloading ... : $(BIN) $(RESET)"
+	@echo "$(YELLOW)Downloading to TM4C123 ... : $(BIN) $(RESET)"
 	sudo lm4flash $(BIN)
 	@echo "$(CYAN)OK$(RESET)"
 	@echo ""
 
 
-down_st: printinfo $(BIN) check_size
+down_st: 
 	@echo ""
-	@echo "$(YELLOW)Downloading ... : $(BIN) $(RESET)"
-	sudo st-flash write $(BUILDDIR)/main.bin 0x8000000
+	@echo "$(YELLOW)Downloading to STM32F4 ... : $(BIN) $(RESET)"
+	sudo st-flash write $(BIN) 0x8000000
 	@echo "$(CYAN)OK$(RESET)"
 	@echo ""
-
-
-
-
 
 
 # [정보 출력] 다니엘님의 스타일 + Git 정보 추가
 printinfo:
 	@echo ""
 	@echo "==============================================================================="
-	@echo " [$(MODE)] PROCESS STARTED"
+	@echo " [$(CHIP_MSG)] [$(MODE)] PROCESS STARTED"
 	@echo "==============================================================================="
 	@echo "  Target Name  : $(TARGET).bin"
-	@echo "  Build Mode   : $(MODE)"
+	@echo "  Chip         : $(CHIP_MSG)"
+	@echo "  Build Mode   : $(MODE_MSG)"
 	@echo "  GCC Version  : $(GCC_VERSION)"
 	@echo "  Source Files : $(SRC_COUNT) files"
 	@echo "  Linker Script: $(LDSCRIPT)"
@@ -106,12 +130,8 @@ printinfo:
 	@echo "==============================================================================="
 
 
-# 1. 칩 사양 설정 (TM4C123GH6PM 기준)
+# 1. 칩 사양 설정
 SIZE = arm-none-eabi-size
-FLASH_SIZE = 262144  # 256 KB
-RAM_SIZE   = 32768   # 32 KB
-
-# ... 기존 설정들 ...
 
 # [SIZE] 메모리 사용량 상세 분석
 check_size: $(ELF)
@@ -133,16 +153,6 @@ check_size: $(ELF)
 	@echo "  RAM:   $(RAM_USED) / $(RAM_SIZE) bytes ($(RAM_PCT)%)"
 	@echo "         Remaining: $(RAM_FREE) bytes"
 	@echo "==============================================================================="
-
-
-# # # [SIZE] 메모리 점유율 확인 (임베디드 필수)
-# SIZE = arm-none-eabi-size
-# check_size: $(ELF)
-# 	@echo ""
-# 	@echo ">> Memory Usage Summary:"
-# 	@$(SIZE) $<
-# 	@echo "==============================================================================="
-
 
 
 #위 bin을 만들려면 , elf가 필요하다 == objcopy
@@ -172,20 +182,6 @@ $(BUILDDIR)/%.o: $(SRCDIR)/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 	@echo "$(CYAN)OK$(RESET)"
 
-# $(BUILDDIR)/%.o: $(SRCDIR)/%.c
-# 	@echo ""
-# 	@echo "$(YELLOW)Compile...: $< to $@ $(RESET)"
-# 	@echo "$(CYAN)🔍 Most Recent Changes in $< (by Time):$(RESET)"
-# 	@# 1. git blame으로 각 줄의 수정시간을 가져옴
-# 	@# 2. 시간 순서로 역순 정렬(sort -r)
-# 	@# 3. 그 중 상위 5줄만 선택(head -n 5)
-# 	@git blame --incremental $< | grep -E "^author-time " | cut -d' ' -f2 > .tmp_times || true
-# 	@git blame $< | sort -k3,3r | head -n 5 | sed 's/^/  [RECENT] /' || true
-# 	@echo "$(CYAN)----------------------$(RESET)"
-# 	@mkdir -p $(BUILDDIR)
-# 	$(CC) $(CFLAGS) -c $< -o $@
-# 	@echo "$(CYAN)OK$(RESET)"
-
 #중간에 생성된 *.o *.bin *.elf 등을 삭제한다.
 clean: 
 	@echo ""
@@ -200,26 +196,3 @@ debug:
 	@echo "$(SRCS)"
 	@echo "$(OBJS)"
 	@echo ""
-
-
-# 아래는 그냥 매우 간단한 버전의 Makefile
-# all:
-# 	@echo "compile main.c ......"
-# 	arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -c main.c -o main.o
-# 	@echo "\ncompile startup.c ......"
-# 	arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -c startup.c -o startup.o
-# 	@echo "\nlinking ......"
-# 	arm-none-eabi-ld -T tm4c123.ld startup.o main.o -o final.elf
-# 	@echo "\nobjcopy ......"
-# 	arm-none-eabi-objcopy -O binary final.elf final.bin
-# 	@echo "\ndownloading binary ......"
-# 	sudo lm4flash final.bin
-#
-# down:
-# 	@echo "\ndownloading binary ......"
-# 	sudo lm4flash final.bin
-#
-# down/%:
-# 	@echo "\ndownloading binary ......"
-# 	sudo lm4flash $*
-

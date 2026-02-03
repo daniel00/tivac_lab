@@ -1,5 +1,7 @@
-// main.c
-// 1. 하드웨어 주소 정의
+// main.c - TM4C123 UART + LED Test
+// TM4C123GH6PM Datasheet: https://www.ti.com/lit/ds/symlink/tm4c123gh6pm.pdf
+
+// ============ TM4C123 하드웨어 주소 정의 ============
 #define SYSCTL_RCGCGPIO_R (*((volatile unsigned long *)0x400FE608))
 #define SYSCTL_RCGCUART_R (*((volatile unsigned long *)0x400FE618))
 #define GPIO_PORTF_DIR_R (*((volatile unsigned long *)0x40025400))
@@ -26,6 +28,21 @@ void delay(int ms)
     for (volatile int i = 0; i < ms; i++) ;
 }
 
+// ============ GPIO 초기화 함수 ============
+void gpio_init(void)
+{
+    // PORTF 클럭 활성화
+    SYSCTL_RCGCGPIO_R |= 0x20;
+
+    // 전원이 퍼져나가는 시간 딜레이
+    delay(100);
+
+    // LED 핀 설정
+    GPIO_PORTF_DIR_R |= (LED_RED | LED_GRN | LED_BLU);
+    GPIO_PORTF_DEN_R |= (LED_RED | LED_GRN | LED_BLU);
+}
+
+// ============ UART 함수 ============
 // UART0 초기화 (115200 baud rate)
 void uart_init(void)
 {
@@ -71,6 +88,8 @@ void uart_puts(const char *str)
         uart_putchar(*str++);
     }
 }
+
+// ============ 공통 printf 함수 ============
 
 // 간단한 UART printf 구현
 void uart_printf(const char *fmt, ...)
@@ -133,40 +152,40 @@ void uart_printf(const char *fmt, ...)
 
 int main(void)
 {
-    // UART 초기화
-    uart_init();
-    uart_printf("UART Initialized at 115200 baud\r\n");
-    
-    SYSCTL_RCGCGPIO_R |= 0x20;
-
-    //전원이 퍼져나가는 시간 딜레이
-    delay(100);
-
-    GPIO_PORTF_DIR_R |= (LED_RED | LED_GRN | LED_BLU);
-    GPIO_PORTF_DEN_R |= (LED_RED | LED_GRN | LED_BLU);
-
     int delaycnt = 500000;
     int counter = 0;
+
+    // UART 초기화
+    uart_init();
+    uart_printf("=== TM4C123 UART+LED Test ===\r\n");
+    uart_printf("UART Initialized at 115200 baud\r\n");
+    
+    // GPIO 초기화
+    gpio_init();
+    uart_printf("GPIO Initialized\r\n");
+
     while (1)
     {
-        // 토글
+        uart_puts("test string\r\n");
+
+        // RED LED 토글
         GPIO_PORTF_DATA_R ^= LED_RED;
-        uart_printf("LED toggle count: %d\r\n", counter++);
+        uart_printf("RED LED toggle count: %d\r\n", counter++);
         delay(delaycnt);
         GPIO_PORTF_DATA_R ^= LED_RED;
 
+        // GREEN LED 토글
         GPIO_PORTF_DATA_R ^= LED_GRN;
+        uart_printf("GREEN LED toggle\r\n");
         delay(delaycnt);
         GPIO_PORTF_DATA_R ^= LED_GRN;
 
+        // BLUE LED 토글
         GPIO_PORTF_DATA_R ^= LED_BLU;
+        uart_printf("BLUE LED toggle\r\n");
         delay(delaycnt);
         GPIO_PORTF_DATA_R ^= LED_BLU;
     }
-}
 
-// arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -c main.c -o main.o
-// arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -c startup.c -o startup.o
-// arm-none-eabi-ld -T tm4c123.ld startup.o main.o -o final.elf
-// arm-none-eabi-objcopy -O binary final.elf final.bin
-// sudo lm4flash final.bin
+    return 0;
+}
