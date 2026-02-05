@@ -1,139 +1,82 @@
-#make TARGET=myapp 등으로 이름을 지정하지 않으면 기본값 main 적용
+# TM4C123 Examples Makefile
 TARGET ?= main
 MODE ?= debug
-CHIP ?= ti
 APP ?= 01_led_test
 
-# ANSI Escape Code를 사용합니다.
+# ANSI Escape Code
 GREEN  = \033[0;32m
 CYAN   = \033[0;36m
 YELLOW = \033[0;33m
 RED    = \033[0;31m
 RESET  = \033[0m
 
-
+# 경로 설정
 SRCDIR = $(APP)/source
 BUILDDIR = $(APP)/build
 
-#최종 출력 파일 bin, elf
+# 출력 파일
 BIN = $(BUILDDIR)/$(TARGET).bin
 ELF = $(BUILDDIR)/$(TARGET).elf
 
-#링크시 오브젝트 파일을 통째로 전달하기 *.c 파일로 부터 *.o 파일 리스트를 문자열 형태로 뽑아낸다.
-#patsubst로 치환시 %로 처리함에 유의
+# 소스 파일
 SRCS = $(wildcard $(SRCDIR)/*.c)
 OBJS = $(patsubst $(SRCDIR)/%.c, $(BUILDDIR)/%.o, $(SRCS))
 
-#컴파일러,링커 설정
+# 컴파일러/링커
 CC = arm-none-eabi-gcc
-LD = arm-none-eabi-ld
+LD = arm-none-eabi-gcc
 OC = arm-none-eabi-objcopy
+SIZE = arm-none-eabi-size
 
+# TM4C123 설정
+CFLAGS = -mcpu=cortex-m4 -mthumb -Wall -DTM4C123
+LDSCRIPT = $(SRCDIR)/tm4c123.ld
+LDFLAGS = -T $(LDSCRIPT) -nostdlib -Wl,--gc-sections
+OCFLAGS = -O binary
+FLASH_SIZE = 262144
+RAM_SIZE   = 32768
 
-#컴파일러옵션
-#공통
-CFLAGS = -mcpu=cortex-m4 -mthumb -Wall
-
-# CHIP 선택에 따라 다르게
-ifeq ($(CHIP), ti)
-	CFLAGS += -DTM4C123
-	CHIP_MSG = "TM4C123"
-	LDSCRIPT = $(SRCDIR)/tm4c123.ld
-	FLASH_TOOL = ti
-	FLASH_SIZE = 262144  # 256 KB (TM4C123)
-	RAM_SIZE   = 32768   # 32 KB (TM4C123)
-else ifeq ($(CHIP), st)
-	CFLAGS += -DSTM32F4
-	CHIP_MSG = "STM32F4"
-	LDSCRIPT = $(SRCDIR)/stm32f4.ld
-	FLASH_TOOL = st
-	FLASH_SIZE = 1048576 # 1 MB (STM32F407)
-	RAM_SIZE   = 192000  # 192 KB (STM32F407)
-else
-	$(error Please specify CHIP=ti or CHIP=st)
-endif
-
-#debug, releash에 따라 다르게
+# 빌드 모드
 ifeq ($(MODE), debug)
 	CFLAGS += -g -O0 -DDEBUG
-	MODE_MSG = "DEBUG MODE"
+	MODE_MSG = "DEBUG"
 else
 	CFLAGS += -Os -DNDEBUG
-	MODE_MSG = "RELEASE MODE"
+	MODE_MSG = "RELEASE"
 endif
 
-
-#링커 옵션
-LDFLAGS = -T $(LDSCRIPT)
-OCFLAGS = -O binary
-
-
-#빌드 정보를 출력
+# 빌드 정보
 BUILD_TIME  := $(shell date "+%Y-%m-%d %H:%M:%S")
 GCC_VERSION := $(shell $(CC) -dumpversion)
 SRC_COUNT   := $(words $(SRCS))
-
-#Git 정보 추출 (주요 변경점 요약)
-# - 변경된 파일 개수와 간략한 목록을 가져옵니다.
-GIT_BRANCH  := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "Not a Git Repo")
 GIT_CHANGES := $(shell git diff --shortstat 2>/dev/null || echo "No changes")
-# 수정된 파일 이름들 중 상위 3개만 추출 (너무 많아지는 것 방지)
-
 GIT_FILES   := $(shell git diff --name-only 2>/dev/null | head -n 3 | tr '\n' ' ')
 
-
 # ============ 메인 타겟 ============
-ti:
-	$(MAKE) CHIP=ti printinfo $(BIN) check_size down_ti
+all: printinfo $(BIN) check_size flash
 
-st:
-	$(MAKE) CHIP=st printinfo $(BIN) check_size down_st
+build: printinfo $(BIN) check_size
 
-#최종적으로 bin파일을 만들거다
-# 아래처럼 하면 printinfo->BIN만들고->check_size->down_ti 를 순서대로 진행한다.
-all: ti
-
-
-#그냥 make만 치면 down 타겟으로 진행된다.
-down_ti: 
+flash: $(BIN)
 	@echo ""
 	@echo "$(YELLOW)Downloading to TM4C123 ... : $(BIN) $(RESET)"
 	sudo lm4flash $(BIN)
 	@echo "$(CYAN)OK$(RESET)"
 	@echo ""
 
-
-down_st: 
-	@echo ""
-	@echo "$(YELLOW)Downloading to STM32F4 ... : $(BIN) $(RESET)"
-	sudo st-flash write $(BIN) 0x8000000
-	@echo "$(CYAN)OK$(RESET)"
-	@echo ""
-
-
-# [정보 출력] 다니엘님의 스타일 + Git 정보 추가
 printinfo:
 	@echo ""
 	@echo "==============================================================================="
-	@echo " [$(CHIP_MSG)] [$(MODE)] PROCESS STARTED"
+	@echo " [TM4C123] [$(MODE_MSG)] - $(APP)"
 	@echo "==============================================================================="
 	@echo "  Target Name  : $(TARGET).bin"
-	@echo "  Chip         : $(CHIP_MSG)"
 	@echo "  Build Mode   : $(MODE_MSG)"
 	@echo "  GCC Version  : $(GCC_VERSION)"
 	@echo "  Source Files : $(SRC_COUNT) files"
-	@echo "  Linker Script: $(LDSCRIPT)"
 	@echo "  Build Time   : $(BUILD_TIME)"
 	@echo "  Output Path  : $(BUILDDIR)"
-	@echo "  Git Changes  : $(GIT_CHANGES)"
-	@echo "  Modified     : $(GIT_FILES)..."
 	@echo "==============================================================================="
 
-
-# 1. 칩 사양 설정
-SIZE = arm-none-eabi-size
-
-# [SIZE] 메모리 사용량 상세 분석
 check_size: $(ELF)
 	@echo ""
 	@echo "$(YELLOW)>> Memory Usage Analysis: $(RESET)"
@@ -154,35 +97,25 @@ check_size: $(ELF)
 	@echo "         Remaining: $(RAM_FREE) bytes"
 	@echo "==============================================================================="
 
-
-#위 bin을 만들려면 , elf가 필요하다 == objcopy
 $(BIN): $(ELF)
 	@echo ""
 	@echo "$(YELLOW)Creating Binary...: $@ $(RESET)"
 	$(OC) $(OCFLAGS) $< $@
 	@echo "$(CYAN)OK$(RESET)"
 
-#위 elf를 만들려면 objs 파일들이 필요하다 == Linking
 $(ELF): $(OBJS)
 	@echo ""
 	@echo "$(YELLOW)Linking...: $@$(RESET)"
 	$(LD) $(LDFLAGS) $^ -o $@ 
 	@echo "$(CYAN)OK$(RESET)"
 
-#위 objs 파일을 만드는 방법이다 == compile 
-#objs안에 들어있는 파일만 만든다. #즉 위에서 제외처리(filtered-out) 한 파일은 자동으로 포함되지 않는다
 $(BUILDDIR)/%.o: $(SRCDIR)/%.c
 	@echo ""
 	@echo "$(YELLOW)Compile...: $< to $@ $(RESET)"
-	@echo "$(CYAN)🔍 Changes in $<:$(RESET)"
-	@# --word-diff-regex를 써서 변경된 부분만 강조하고, 불필요한 헤더는 tail로 날립니다.
-	@git diff --color=always -U0 $< | tail -n +5 | head -n 5 || true
-	@echo "$(CYAN)----------------------$(RESET)"
 	@mkdir -p $(BUILDDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 	@echo "$(CYAN)OK$(RESET)"
 
-#중간에 생성된 *.o *.bin *.elf 등을 삭제한다.
 clean: 
 	@echo ""
 	@echo "$(YELLOW)Clean build files... $(RESET)"
@@ -190,9 +123,23 @@ clean:
 	@echo "$(CYAN)OK$(RESET)"
 	@echo ""
 
+# ============ 동적 타겟 처리 ============
+# 폴더명으로 된 타겟이 들어오면 자동으로 APP으로 설정
+.DEFAULT_GOAL := help
 
-debug:
-	@echo ""
-	@echo "$(SRCS)"
-	@echo "$(OBJS)"
-	@echo ""
+%: force
+	@if [ -d "$@" ] && [ -f "$@/source/main.c" ]; then \
+		$(MAKE) APP=$@ all; \
+	else \
+		echo "Error: Unknown target or example directory not found: $@"; \
+	fi
+
+force: ;
+
+help:
+	@echo "Usage: make <example_name>"
+	@echo "Examples:"
+	@ls -d */ 2>/dev/null | sed 's#/##' | awk '{print "  make " $$1}'
+
+# 예제 디렉토리를 phony로 선언
+.PHONY: all build flash printinfo check_size clean help force

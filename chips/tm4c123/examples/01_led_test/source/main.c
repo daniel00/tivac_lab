@@ -34,7 +34,7 @@ void gpio_init(void)
 
 int main(void)
 {
-    int delaycnt = 100000;
+    int delaycnt = 500000;
 
     // GPIO 초기화
     gpio_init();
